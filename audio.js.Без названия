@@ -1,0 +1,238 @@
+'use strict';
+
+var audio = {
+	
+	elem: new Audio(),
+	files: [],
+	files_data: {},
+	timer_reverse: false,
+
+	init: function(){
+		$(document).on('click', '[data-download-id]', function(){
+			$.post('/', {
+				class: 'music/Music',
+				method: 'setDownloadCount',
+				id: $(this).attr('data-download-id')
+			});
+		});
+		$(document).on('mousedown', '[data-audio-url]', function(){
+			audio.playURL($(this).attr('data-audio-url'));
+		});
+		$(document).on('mousedown', '[data-audio-file]', function(){
+			if($(this).attr('data-audio-file')){
+				audio.play($(this).attr('data-audio-file'));
+			} else {
+				alert('Нет файла');
+			}
+		});
+		$(document).on('ajaxLoad', 'html', function(){
+			audio.viewPause();
+			audio.sliderInit();
+		});
+		$(document).on('click', '.audio-timer', function(){
+			audio.timer_reverse = audio.timer_reverse ? false : true;
+		});
+		$(document).on('show.bs.modal', '#audioPlayer', audio.playlistPrint);
+		
+		audio.sliderInit();
+
+		audio.elem.addEventListener('ended', audio.next);
+		audio.elem.addEventListener('timeupdate', audio.progressUpdate);
+	},
+	
+	playlistPrint: function(){
+		if(Object.keys(audio.files_data).length == 0){
+			audio.getAudioURL($('.play_pause').attr('data-audio-url'), function(){
+				if(audio.files.length > 0){
+					audio.playlistPrint();
+				}
+			});
+		} else {
+			$('#audioPlayer [data-list]').html('');
+			$.each(audio.files_data, function(i, item){
+				$('#audioPlayer [data-list]').append('<div class="music_item media mt-3"> <a href="javascript://" data-audio-id="'+ item.id +'" data-audio-img="'+ item.img +'" data-artist-name="'+ item.artist +'" data-audio-name="'+ item.name +'" data-audio-file="'+ i +'" class="mr-3 play"> <img src="'+ item.img +'" width="40" class="rounded"><div class="equalizer-wrap"><div class="equalizer"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="css-2h8luq"><rect rx="2" ry="2" class="css-15an34x" height="6" width="3.5" y="9" x="1"></rect><rect rx="2" ry="2" class="css-9dlzn8" height="19" width="3.5" y="2.5" x="5.5"></rect><rect rx="2" ry="2" class="css-1gij2rm" height="12" width="3.5" y="6" x="10"></rect><rect rx="2" ry="2" class="css-alw8g0" height="14" width="3.5" y="5" x="14.5"></rect><rect rx="2" ry="2" class="css-1h130gs" height="6" width="3.5" y="9" x="19"></rect></svg></div></div> </a><div class="media-body text-truncate"> <a href="/'+ item.id +'">'+ item.name +'</a><div class="text-muted text-truncate w-100"> '+ item.artist +' <span class="small float-right" style="line-height: 1.71"> <span class="audio-timer"></span> <span class="audio-timer-full"></span> </span></div></div><div class="progress-wrap"><div class="progress-timer"></div><div class="progress-load"></div><div class="progress-seek"></div></div><div class="volume-wrap"><div class="volume-value"></div></div></div>');
+			});
+			audio.viewPause();
+			audio.sliderInit();
+		}
+	},
+	
+	sliderInit: function(){
+		$('.volume-wrap').slider({
+			slide: function(event, ui){
+				audio.setVolume(ui.value / 100);
+			}
+		});
+		audio.setVolume();
+		
+		$('.progress-wrap').slider({
+			start: function(event, ui){
+				$(this).addClass('slider_active');
+			},
+			stop: function(){
+				$(this).removeClass('slider_active');
+			},
+			slide: function(event, ui){
+				audio.setProgress(ui.value / 100);
+			}
+		});
+	},
+	
+	src: function(){
+		return audio.elem.src ? new URL(audio.elem.src).pathname : false;
+	},
+	
+	viewPause: function(playing){
+		$('.play_pause').find('.fa-play').removeClass('d-none');
+		$('.play_pause').find('.fa-pause').addClass('d-none');
+		$('[data-audio-file]').addClass('play').removeClass('pause');
+		
+		if(!audio.elem.paused || playing){
+			$('.play_pause')
+				.attr('data-audio-file', audio.src())
+				.removeAttr('data-audio-url')
+				.find('.fa-play').addClass('d-none');
+			$('.play_pause').find('.fa-pause').removeClass('d-none');
+			
+			$('.music_item').removeClass('active');
+			$('[data-audio-file="'+ audio.src() +'"]')
+				.removeClass('play').addClass('pause')
+				.parents('.music_item').addClass('active');
+		}
+	},
+	
+	getAudioURL: function(url, callback){
+		$.get(url, function(html){
+			audio.getList(html);
+			if(audio.files.length == 0 && url != '/musics'){
+				setTimeout(function(){
+					audio.getAudioURL('/musics', callback);
+				}, 0);
+			} else {
+				callback();
+			}
+		});
+	},
+	
+	playURL: function(url){
+		audio.getAudioURL(url, function(){
+			if(audio.files.length > 0){
+				audio.play(audio.files[0]);
+			}
+		});
+	},
+
+	play: function(file){
+		if(audio.files.length == 0 || audio.files.indexOf(file) == -1){
+			audio.getList($('body').html());
+		}
+		
+		if($('[data-audio-file="'+ file +'"]').hasClass('pause')){
+			audio.elem.pause();
+			audio.viewPause();
+		} else {
+			if(audio.src() != file){
+				audio.elem.src = file;
+			}
+			
+			audio.elem.play();
+			audio.viewPause(true);
+			
+			$.post('/', {
+				class: 'music/Music',
+				method: 'setPlayCount',
+				id: audio.files_data[file].id
+			});
+		}
+	},
+	
+	getList: function(html){
+		audio.files = [];
+		audio.files_data = {};
+		$('[data-audio-file]', html).each(function(){
+			if($(this).attr('data-audio-file') != ''){
+				if(audio.files.indexOf($(this).attr('data-audio-file')) == -1){
+					audio.files.push($(this).attr('data-audio-file'));
+				}
+				audio.files_data[$(this).attr('data-audio-file')] = {
+					name: $(this).attr('data-audio-name'),
+					artist: $(this).attr('data-artist-name'),
+					img: $(this).attr('data-audio-img'),
+					id: $(this).attr('data-audio-id')
+				};
+			}
+		});
+	},
+	
+	next: function(){
+		if(audio.files.length > 0){
+			var index = audio.files.indexOf(audio.src())+1;
+			if(index > audio.files.length-1){
+				index = 0;
+			}
+			
+			audio.play(audio.files[index]);
+		}
+	},
+	
+	formatTime: function(secs) {
+        var minutes = Math.floor(secs / 60) || 0;
+        var seconds = (secs - minutes * 60) || 0;
+        return minutes + ':' + (seconds < 10 ? '0' : '') + seconds;
+    },
+	
+	setProgress: function(per){
+		audio.elem.currentTime = audio.elem.duration * per;
+		audio.progressUpdate();
+	},
+	
+	progressUpdate: function(){
+		var timer = (audio.timer_reverse ? '-' : '') + 
+				audio.formatTime(Math.round(
+					audio.timer_reverse ? audio.elem.duration - audio.elem.currentTime : audio.elem.currentTime
+				)),
+			timer_full = audio.formatTime(Math.round(audio.elem.duration)),
+			progress_timer = ((((audio.elem.currentTime || 0) / audio.elem.duration) * 100) || 0),
+			progress_load = 0;
+			
+		var ranges = [];
+		for(var i = 0; i < audio.elem.buffered.length; i ++){
+			ranges.push([
+				audio.elem.buffered.start(i),
+				audio.elem.buffered.end(i)
+			]);
+		}
+			
+		for(var i = 0; i < audio.elem.buffered.length; i ++){
+			progress_load = Math.round(
+				(100 / audio.elem.duration) * (ranges[i][1] - ranges[i][0])
+			);
+		}
+		
+		$('[data-audio-file="'+ audio.src() +'"]').each(function(){
+			$(this).parents('.music_item').find('.progress-load').css('width', progress_load + '%');
+			$(this).parents('.music_item').find('.progress-timer').css('width', progress_timer + '%');
+			$(this).parents('.music_item').find('.audio-timer').html(timer);
+			$(this).parents('.music_item').find('.audio-timer-full').html(timer_full);
+		});
+	},
+	
+	setVolume: function(per){
+		if(per){
+			var date = new Date();
+			date.setMonth(date.getMonth() + 3);
+			document.cookie = "volume="+ per +"; path=/; expires=Tue, "+ (date.toGMTString());
+			audio.elem.volume = per;
+		} else {
+			var volume_cookie = document.cookie.match('(^|;) ?volume=([^;]*)(;|$)');
+			if(volume_cookie){
+				audio.elem.volume = volume_cookie[2];
+			}
+		}
+		$('.volume-value').css('width', audio.elem.volume * 100 + '%');
+		$('.volume-wrap span').css('left', audio.elem.volume * 100 + '%');
+	}
+	
+}
+
+$(audio.init);

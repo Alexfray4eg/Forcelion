@@ -1,0 +1,530 @@
+'use strict';
+
+(function ($) {
+    $.fn.transpose = function (options) {
+        var opts = $.extend({}, $.fn.transpose.defaults, options);
+
+        var currentKey = null;
+
+        var keys = [
+            { name: 'Ab', value: 0, type: 'F' },
+            { name: 'A', value: 1, type: 'N' },
+            { name: 'A#', value: 2, type: 'S' },
+            { name: 'Bb', value: 2, type: 'F' },
+            { name: 'H', value: 3, type: 'N' },
+            { name: 'C', value: 4, type: 'N' },
+            { name: 'C#', value: 5, type: 'S' },
+            { name: 'Db', value: 5, type: 'F' },
+            { name: 'D', value: 6, type: 'N' },
+            { name: 'D#', value: 7, type: 'S' },
+            { name: 'Eb', value: 7, type: 'F' },
+            { name: 'E', value: 8, type: 'N' },
+            { name: 'F', value: 9, type: 'N' },
+            { name: 'F#', value: 10, type: 'S' },
+            { name: 'Gb', value: 10, type: 'F' },
+            { name: 'G', value: 11, type: 'N' },
+            { name: 'G#', value: 0, type: 'S' }
+        ];
+
+        var getKeyFromUrl = function () {
+            var href = location.href,
+                i = href.indexOf("#"),
+                hash = i >= 0 ? href.substr(i + 1) : null;
+            if (!hash) {
+                return null;
+            }
+
+            return getKeyByName(hash);
+        };
+
+        var setKeyToUrl = function (keyObject) {
+            var newHash = keyObject && keyObject.name;
+            if (!newHash) {
+                return;
+            }
+
+            if (window.history.pushState) {
+                // HTML5 - меняем хеш в адресной строке без перезагрузки страницы
+                window.history.pushState(null, document.title, '#' + newHash);
+            }
+            else {
+                // без HTML5 - меняем url в поле
+                $('#divTonLink input')[0].value = location.hash
+                    ? location.href.replace(location.hash, '#' + currentKey.name)
+                    : location.href + '#' + currentKey.name;
+            }
+        };
+
+        var renderChords = function () {
+            $('#song_chords').html('');
+            $('pre span.c').each(function () {
+                var src = $(this).find('img').attr('src'), parent = $(this).parent('.tooltip');
+                if ($(parent[0].previousSibling).text() != '/') {
+                    if ($('#song_chords [src="' + src + '"]').length == 0) {
+                        $('#song_chords').append('<img class="c-img" src="' + src + '">');
+                    }
+                }
+                else {
+                    $(this).find('*').remove();
+                }
+            });
+        };
+
+        var getKeyByName = function (name) {
+            if (name.charAt(name.length - 1) == "m") {
+                name = name.substring(0, name.length - 1);
+            }
+            for (var i = 0; i < keys.length; i++) {
+                if (name == keys[i].name) {
+                    return keys[i];
+                }
+            }
+        };
+
+        var getChordRoot = function (input) {
+            if (input.length > 1 && (input.charAt(1) == "b" || input.charAt(1) == "#")) {
+                return input.substr(0, 2);
+            }
+            else {
+                return input.substr(0, 1);
+            }
+        };
+
+        var getNewKey = function (oldKey, delta, targetKey) {
+            var keyValue = getKeyByName(oldKey).value + delta;
+
+            if (keyValue > 11) {
+                keyValue -= 12;
+            }
+            else if (keyValue < 0) {
+                keyValue += 12;
+            }
+
+            var i = 0;
+            if (keyValue == 0 || keyValue == 2 || keyValue == 5 || keyValue == 7 || keyValue == 10) {
+                // Return the Flat or Sharp Key
+                switch (targetKey.name) {
+                    case "A":
+                    case "A#":
+                    case "B":
+                    case "C":
+                    case "C#":
+                    case "D":
+                    case "D#":
+                    case "E":
+                    case "F#":
+                    case "G":
+                    case "G#":
+                        for (; i < keys.length; i++) {
+                            if (keys[i].value == keyValue && keys[i].type == "S") {
+                                return keys[i];
+                            }
+                        }
+                    default:
+                        for (; i < keys.length; i++) {
+                            if (keys[i].value == keyValue && keys[i].type == "F") {
+                                return keys[i];
+                            }
+                        }
+                }
+            }
+            else {
+                // Return the Natural Key
+                for (; i < keys.length; i++) {
+                    if (keys[i].value == keyValue) {
+                        return keys[i];
+                    }
+                }
+            }
+        };
+
+        var getDelta = function (oldIndex, newIndex) {
+            if (oldIndex > newIndex) {
+                return 0 - (oldIndex - newIndex);
+            }
+            else if (oldIndex < newIndex) {
+                return 0 + (newIndex - oldIndex);
+            }
+            else {
+                return 0;
+            }
+        };
+
+        var transposeSong = function (target, key) {
+            var newKey = getKeyByName(key);
+
+            if (currentKey.name == newKey.name) {
+                return;
+            }
+
+            var delta = getDelta(currentKey.value, newKey.value);
+
+            $("span.c", target).each(function (i, el) {
+                transposeChord(el, delta, newKey);
+            });
+
+            currentKey = newKey;
+            setKeyToUrl(newKey);
+
+            generate_html(target);
+            renderChords();
+        };
+
+        var transposeChord = function (selector, delta, targetKey) {
+            var el = $(selector);
+            var oldChord = el.text();
+            var oldChordRoot = getChordRoot(oldChord);
+            var newChordRoot = getNewKey(oldChordRoot, delta, targetKey);
+            var newChord = newChordRoot.name + oldChord.substr(oldChordRoot.length);
+            el.text(newChord);
+
+            var sib = el[0].nextSibling;
+            if (sib && sib.nodeType == 3 && sib.nodeValue.length > 0 && sib.nodeValue.charAt(0) != "/") {
+                var wsLength = getNewWhiteSpaceLength(oldChord.length, newChord.length, sib.nodeValue.length);
+                sib.nodeValue = makeString(" ", wsLength);
+            }
+        };
+
+        var getNewWhiteSpaceLength = function (a, b, c) {
+            if (a > b) {
+                return (c + (a - b));
+            }
+            else if (a < b) {
+                return (c - (b - a));
+            }
+            else {
+                return c;
+            }
+        };
+
+        var makeString = function (s, repeat) {
+            var o = [];
+            for (var i = 0; i < repeat; i++) {
+                o.push(s);
+            }
+            return o.join("");
+        }
+
+        var isChordLine = function (input) {
+            var tokens = input.replace(/\s+/, " ").split(" ");
+
+            // Try to find tokens that aren't chords
+            // if we find one we know that this line is not a 'chord' line.
+            for (var i = 0; i < tokens.length; i++) {
+                if (!$.trim(tokens[i]).length
+                    == 0
+                    && !tokens[i].match(opts.chordRegex)
+                    && tokens[i].indexOf('|')
+                    == -1
+                    && tokens[i].indexOf('/')
+                    == -1
+                    && tokens[i].indexOf('(')
+                    == -1
+                    && tokens[i].indexOf(')')
+                    == -1
+                    && tokens[i].indexOf('-')
+                    == -1
+                    && tokens[i].indexOf('x2')
+                    == -1
+                    && tokens[i].indexOf('x3')
+                    == -1
+                    && tokens[i].indexOf('x4')
+                    == -1
+                    && tokens[i].indexOf('x5')
+                    == -1
+                    && tokens[i].indexOf('x6')
+                    == -1
+                    && tokens[i].indexOf('•')
+                    == -1
+                    && tokens[i].indexOf('NC')
+                    == -1) {
+                    return false;
+                }
+            }
+            return true;
+        };
+
+        var wrapChords = function (input) {
+            var str = input.replace(opts.chordReplaceRegex, "<a class='tooltip'><span class='c'>$1<span class='tooltip-content'><img src='/chords.php?src=$1.png&t=m&w=200&h=200' style='width:65px;'></span></span></a>");
+
+            // Замена # на x в URL
+            var i = 0;
+            return str.replace(/#/g, function (match) {
+                i++;
+                return (i % 2 == 0) ? "x" : match;
+            });
+        };
+
+        // Генерация html кода
+        var generate_html = function ($this) {
+            var type_br = $this.html().indexOf('<br>'),
+                output = [],
+                lines = (type_br > 0 ? $($this).html().split("<br>") : $($this).text().split("\n"));
+
+            originalAccord = '';
+            originalText = '';
+
+            for (var i = 0; i < lines.length; i++) {
+                var line = lines[i];
+
+                for (var n = 0; n < videlit.length; n++) {
+                    if (line.toLowerCase().indexOf(videlit[n]) != -1) {
+                        originalText += "\n";
+                        line = '</div><div class="blocks"><b class="videlit_line">' + line + '  </b>';
+                        originalAccord += line + "\n";
+                    }
+                }
+
+                if (isChordLine(line) && startKey && $.trim(startKey) != '') {
+                    var chords_html = wrapChords(line);
+                    originalAccord += '<span class="chopds">'
+                        + $.trim(chords_html.replace(/\s+/g, '    '))
+                        + '</span>'
+                        + "\n";
+                    output.push('<span class="chopds">' + chords_html + '</span>');
+                }
+                else {
+                    originalText += '<span class="text">' + line + "</span>\n";
+                    output.push("<span class='text'>" + line + "</span>");
+                }
+            }
+
+            var outputText = output.join("\n");
+            var isDataOriginal = musicText.attr('data-original');
+            if (!isDataOriginal) {
+                accordText = outputText;
+            }
+
+            $($this).html(outputText);
+        }
+
+        var originalText = '',
+            accordText = '',
+            originalAccord = '',
+            startKey = '',
+            beforeToggleDataKey,
+            musicText = $('#music_text');
+        return $(this).each(function (index) {
+            startKey = $(this).attr("data-key");
+            if (!startKey || $.trim(startKey) == "") {
+                startKey = opts.key;
+            }
+
+            if (!startKey || $.trim(startKey) == "") {
+                generate_html($(this));
+                return false;
+            }
+
+            currentKey = getKeyByName(startKey);
+
+            if (!window.history.pushState) {
+                // Если браузер не поддерживает HTML5,
+                // то выводим ссылку на тональность в специальном поле
+                var divTonLink = '<div id="divTonLink" class="form-group">'
+                    + 'Ссылка на тональность: <input class="form-control" type="text" '
+                    + 'value="'
+                    + location.href + (location.hash ? '' : '#' + currentKey.name)
+                    + '" '
+                    + 'onclick="this.setSelectionRange(0, this.value.length);" '
+                    + 'readonly>'
+                    + '</div>';
+                $(this).before(divTonLink);
+            }
+
+            // Build tranpose links ===========================================
+            var keyLinks = [];
+            var fromHash = getKeyFromUrl() || currentKey;
+
+            $(keys).each(function (i, key) {
+                var name = key.name;
+
+                if (currentKey.name === key.name) {
+                    name += " (Original)";
+                }
+
+                if (fromHash.name === key.name) {
+                    keyLinks.push("<option value='" + key.name + "' selected>" + name + "</option>");
+
+                } else if (currentKey.name === key.name) {
+
+                    if (fromHash.name !== key.name) {
+                        keyLinks.push("<option value='" + key.name + "'>" + name + "</option>");
+                    } else {
+                        keyLinks.push("<option value='" + key.name + "' selected>" + name + "</option>");
+                    }
+
+                } else {
+                    keyLinks.push("<option value='" + key.name + "'>" + name + "</option>");
+                }
+            });
+
+            var $this = $(this);
+            var keysHtml = $("<select class='select--input'></select>");
+            keysHtml.html(keyLinks.join(""));
+
+            /*$('a', keysHtml).on('mousedown', function () {
+                $(".transpose-keys a").removeClass("selected");
+                $(this).addClass("selected");
+
+                if ($(this).attr('data-toggle-text') == undefined) {
+                    transposeSong($this, $(this).text());
+                    $('.chopds').show();
+                }
+            });*/
+
+            $(keysHtml).on('change', function () {
+
+                $("option", this).removeAttr('selected').filter("[value='" + this.value + "']").attr('selected', true);
+
+                transposeSong($this, this.value);
+
+            });
+
+            $('.tonality').html(keysHtml);
+            //$(this).before(keysHtml);
+
+            var accordsVisible = true;
+            $('[data-toggle-accords]').on('mousedown', function () {
+                if (!textVisible) {
+                    return;
+                }
+
+                if ($(this).attr('data-toggle-text') == '') {
+                    $(this).attr('data-toggle-text', $(this).html());
+                }
+
+                if ($(this).attr('data-btn-text') == undefined) {
+                    $(this).attr('data-btn-text', $(this).html());
+                }
+
+                var isDataOriginal = musicText.attr('data-original');
+                if (!isDataOriginal || isDataOriginal === 'false') {
+                    musicText.html(originalAccord).attr('data-original', 'true');
+                    $(this).html($(this).attr('data-toggle-text')).addClass('selected').attr('title', 'показать текст');
+                    beforeToggleDataKey = beforeToggleDataKey || currentKey;
+
+                    accordsVisible = false;
+                }
+                else {
+                    var currentKey1 = currentKey;
+                    transposeSong($this, beforeToggleDataKey.name);
+
+                    musicText.html(accordText).attr('data-original', 'false');
+                    $(this).html($(this).attr('data-btn-text')).removeClass('selected').attr('title', 'скрыть текст');
+
+                    transposeSong($this, currentKey1.name);
+
+                    accordsVisible = true;
+                }
+
+                $(this).tooltip('dispose').tooltip();
+
+                return false;
+            });
+
+            var textVisible = true;
+            $('[data-toggle-text]').on('mousedown', function () {
+                if (!accordsVisible) {
+                    return;
+                }
+
+                if ($(this).attr('data-toggle-text') === '') {
+                    $(this).attr('data-toggle-text', $(this).html());
+                }
+
+                if ($(this).attr('data-btn-text') === undefined) {
+                    $(this).attr('data-btn-text', $(this).html());
+                }
+
+                var isDataOriginal = musicText.attr('data-original');
+                if (!isDataOriginal || isDataOriginal === 'false') {
+                    musicText.html(originalText).attr('data-original', 'true');
+                    $(this).html($(this).attr('data-toggle-text')).addClass('selected').attr('title', 'показать аккорды');
+
+                    beforeToggleDataKey = beforeToggleDataKey || currentKey;
+
+                    $('.tonality').css('visibility', 'hidden');
+
+                    textVisible = false;
+                }
+                else {
+                    var currentKey1 = currentKey;
+                    transposeSong($this, beforeToggleDataKey.name);
+
+                    musicText.html(accordText).attr('data-original', 'false');
+                    $(this).html($(this).attr('data-btn-text')).removeClass('selected').attr('title', 'скрыть аккорды');
+
+                    transposeSong($this, currentKey1.name);
+
+                    $('.tonality').css('visibility', 'visible');
+
+                    textVisible = true;
+                }
+
+                $(this).tooltip('dispose').tooltip();
+
+                if ($(this).attr('data-toggle-img') != undefined) {
+                    $('#song_chords').toggle();
+                }
+
+                if ($(this).attr('data-toggle-keys') != undefined) {
+                    $('#keys').toggle();
+                }
+
+                return false;
+            });
+
+            // Генерация html кода
+            function generate_html($this) {
+                var type_br = $this.html().indexOf('<br>'),
+                    output = [],
+                    lines = (type_br > 0 ? $($this).html().split("<br>") : $($this).text().split("\n"));
+
+                originalAccord = '';
+                originalText = '';
+
+                for (var i = 0; i < lines.length; i++) {
+                    var line = lines[i];
+
+                    for (var n = 0; n < videlit.length; n++) {
+                        if (line.toLowerCase().indexOf(videlit[n]) != -1) {
+                            originalText += "\n";
+                            line = '</div><div class="blocks"><b class="videlit_line">' + line + '  </b>';
+                            originalAccord += line + "\n";
+                        }
+                    }
+
+                    if (isChordLine(line) && startKey && $.trim(startKey) != '') {
+                        var chords_html = wrapChords(line);
+                        originalAccord += '<span class="chopds">'
+                            + $.trim(chords_html.replace(/\s+/g, '    '))
+                            + '</span>'
+                            + "\n";
+                        output.push('<span class="chopds">' + chords_html + '</span>');
+                    }
+                    else {
+                        originalText += '<span class="text">' + line + "</span>\n";
+                        output.push("<span class='text'>" + line + "</span>");
+                    }
+                }
+
+                accordText = output.join("\n");
+                $($this).html(accordText);
+            }
+
+            generate_html($this);
+            renderChords();
+
+            if (fromHash && fromHash !== currentKey) {
+                transposeSong($this, fromHash.name);
+            }
+
+            $('.transpose-keys [data-toggle="tooltip"]').tooltip();
+        });
+    };
+
+    $.fn.transpose.defaults = {
+        chordRegex: /^[A-H][b\#]?(2|5|6|7|9|11|13|\+|\+2|\+4|\+5|\+6|\+7|\+9|\+11|\+13|6\/9|7\-5|7\-9|7\#5|\#5|7\#9|\#9|7\+3|7\+5|7\+9|7b5|7b9|7sus2|7sus4|sus4|add2|add4|add6|add9|aug|dim|dim7|m\/maj7|m6|m7|m7b5|m9|m11|m13|maj|maj7|maj9|maj11|maj13|mb5|m|sus|sus2|sus4|m7add11|add11|b5|-5|4)*(\/[A-H][b\#]*)*$/,
+        chordReplaceRegex: /([A-H][b\#]?(2|5|6|7|9|11|13|\+|\+2|\+4|\+5|\+6|\+7|\+9|\+11|\+13|6\/9|7\-5|7\-9|7\#5|\#5|7\#9|\#9|7\+3|7\+5|7\+9|7b5|7b9|7sus2|7sus4|sus4|add2|add4|add6|add9|aug|dim|dim7|m\/maj7|m6|m7|m7b5|m9|m11|m13|maj|maj7|maj9|maj11|maj13|mb5|m|sus|sus2|sus4|m7add11|add11|b5|-5|4)*)/g
+    };
+})(jQuery);

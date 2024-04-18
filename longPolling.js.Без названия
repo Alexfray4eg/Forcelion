@@ -1,0 +1,79 @@
+'use strict';
+
+var longPolling = {
+
+	setTimeout: false,
+
+	init: function (response) {
+		if (response && response.status && response.status == 503) {
+			window.location.reload();
+		} else {
+			if (longPolling.setTimeout) {
+				clearTimeout(longPolling.setTimeout);
+			}
+			longPolling.setTimeout = setTimeout(function () {
+				longPolling.getServer();
+			}, 5000);
+		}
+	},
+
+	data: {},
+	dataOld: {},
+	callback: {},
+	callbackOld: {},
+
+	add: function (obj) {
+		var key = obj.class + '.' + obj.method;
+
+		longPolling.data[key] = obj;
+
+		if (obj.callback) {
+			longPolling.callback[key] = { callback: obj.callback };
+			delete longPolling.data[key].callback;
+		}
+
+		if (!longPolling.getServerAjaxFirst) longPolling.getServer();
+	},
+
+	remove: function (key) {
+		delete longPolling.data[key];
+	},
+
+	getServerAjaxFirst: false,
+	getServer: function () {
+		if ($.isEmptyObject(longPolling.data)) {
+			longPolling.init();
+			return false;
+		}
+
+		longPolling.getServerAjaxFirst = true;
+
+		longPolling.dataOld = longPolling.data;
+		longPolling.callbackOld = longPolling.callback;
+		longPolling.data = {};
+		longPolling.callback = {};
+
+		$.ajax({
+			url: '/?oldengine=true',
+			type: 'get',
+			dataType: 'json',
+			data: {
+				class: 'LongPolling',
+				method: 'check',
+				data: longPolling.dataOld
+			},
+			complete: longPolling.init,
+			success: function (json) {
+				$.each(longPolling.dataOld, function (key, item) {
+					longPolling.callbackOld[key].callback((typeof json[key] !== 'undefined' ? json[key] : {}));
+				});
+			},
+			error: function () {
+				$.each(longPolling.dataOld, function (key, item) {
+					longPolling.callbackOld[key].callback({ error: 'Ошибка соединения' });
+				});
+			}
+		});
+	}
+
+}

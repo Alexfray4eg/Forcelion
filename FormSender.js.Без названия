@@ -1,0 +1,265 @@
+'use strict';
+
+var FormSender = {
+
+	option: {
+		preloader: '<i class="fas fa-circle-notch fa-spin"></i>',
+		dataType: 'json',
+		type: 'post'
+	},
+
+	events: false,
+	init: function () {
+		if (!FormSender.events) {
+			FormSender.events = true;
+			$(document).on('submit', '[data-send="ajax"]', function () {
+				FormSender.Send($(this));
+				return false;
+			});
+			$(document).on('keyup change', '.is-invalid, .is-invalid *, .selectized', function () {
+				$(this).removeClass('is-invalid');
+
+				var errorInput = $('[data-error-input="' + $(this).attr('name') + '"]');
+
+				if (errorInput.length == 0) {
+					errorInput = $('[data-error-input="' + $(this).attr('name').replace('[]', '') + '"]');
+				}
+
+				if (errorInput.length > 0) {
+					errorInput.parents('.is-invalid').removeClass('is-invalid');
+					errorInput.remove();
+				}
+			});
+		}
+		$('[data-send="ajax"]').each(function () {
+			$(this).append('<input type="hidden" name="hash" value="hash">');
+		});
+	},
+
+	// Форма
+	getForm: function () {
+		if (this.form) return this.form;
+		return ($('form').length > 0 ? $('form') : false);
+	},
+
+	form: false,
+	SendAjax: false,
+	Send: function (form) {
+		if (this.SendAjax == true) return false;
+		this.SendAjax = true;
+		this.form = form;
+
+		form.find('[data-error-input]').remove();
+		form.find('.is-invalid').removeClass('is-invalid');
+
+		FormSender.option.url = window.location.href;
+
+		var url = (form.attr('action') === undefined ? FormSender.option.url : form.attr('action')),
+			dataType = (form.attr('data-form-type') === undefined ? FormSender.option.dataType : form.attr('data-form-type')),
+			type = (form.attr('method') === undefined ? FormSender.option.type : form.attr('method')),
+			preloader = (form.find('[type="submit"]').attr('data-preload-text') === undefined ? FormSender.option.preloader : form.find('[type="submit"]').attr('data-preload-text')),
+			old_btn_text = form.find('[type="submit"]').html(),
+			formData = new FormData(form[0]);
+
+		if (form.attr('enctype') == 'multipart/form-data') {
+			if (form.find('[type="file"]').length > 0) {
+				form.find('[type="file"]').each(function () {
+					if ($(this).attr('name').indexOf('[') != -1) {
+						$.each($(this)[0].files, function (i, file) {
+							formData.append('' + $(this).attr('name') + '-' + i, file);
+						});
+					} else {
+						var file_data = $(this).prop('files')[0];
+						formData.append('' + $(this).attr('name') + '', file_data);
+					}
+				});
+			}
+		}
+
+		// select[multiple] fixed
+		form.find('select[multiple]').each(function () {
+			var multiple_val = $(this).val();
+			formData.append('' + $(this).attr('name') + '', multiple_val);
+		});
+
+		// Template.uploadPreviewerForms['files']
+		if (
+			form.find('[data-plugin="uploadPreviewer"]').length > 0 &&
+			typeof Template.uploadPreviewerForms !== 'undefined'
+		) {
+			form.find('[data-plugin="uploadPreviewer"]').each(function () {
+				var name = $(this).attr('name'),
+					currentFileList = Template.uploadPreviewerForms[name].fileList();
+				if (currentFileList.length > 0) {
+					currentFileList.forEach(function (file) {
+						formData.append('' + name + '[]', file);
+					});
+				}
+			});
+		}
+
+		var submit = form.find('[type="submit"]');
+		submit.css('width', submit.css('width')).html(FormSender.option.preloader);
+
+		$.ajax({
+			url: url,
+			dataType: dataType,
+			type: type,
+			cache: false,
+			contentType: false,
+			processData: false,
+			data: formData,
+			xhr: function () {
+				var xhr = $.ajaxSettings.xhr();
+				xhr.upload.addEventListener('progress', function (evt) {
+					if (evt.lengthComputable) {
+						var percentComplete = evt.loaded / evt.total;
+						if (form.find('progress').length > 0) {
+							form.find('progress').val(Math.round(percentComplete * 100)).show();
+						}
+						if (form.find('.progress').length > 0) {
+							form.find('.progress').show();
+							form.find('.progress-bar')
+								.html(Math.round(percentComplete * 100))
+								.css('width', Math.round(percentComplete * 100) + '%')
+								.attr('aria-valuenow', Math.round(percentComplete * 100));
+						}
+					}
+				}, false);
+				return xhr;
+			},
+			complete: function () {
+				FormSender.SendAjax = false;
+				form.find('progress').val('0').hide();
+				form.find('.progress').hide().find('.progress-bar').css('width', '0');
+				form.find('[type="submit"]').html(old_btn_text).css('width', '');
+				if (typeof grecaptcha !== 'undefined') grecaptcha.reset();
+			},
+			success: function (response) {
+				var callback = form.attr('data-callback'),
+					check = form.attr('data-check');
+
+				if (callback != undefined) {
+					var function_name = '' + callback + '(response)';
+					eval(function_name);
+					if (check == undefined) return false;
+				}
+
+				FormSender.PrintSuccess(response);
+			},
+			error: function (XMLHttpRequest, textStatus, errorThrown) {
+				var error = 'XMLHttpRequest: ' + XMLHttpRequest.responseText + ', textStatus: ' + textStatus + ', errorThrown: ' + errorThrown;
+				console.log(error);
+			}
+		});
+
+	},
+
+	PrintSuccess: function (response) {
+		if (typeof response.reload !== 'undefined') {
+			window.location.href = response.reload;
+			return false;
+		}
+
+		if (typeof response.InputError !== 'undefined') {
+			$.each(response.InputError, function (i, item) {
+				item['isFocus'] = (!i ? true : false);
+				FormSender.InputError(item);
+			});
+			return false;
+		}
+
+		if (typeof response.warning !== 'undefined') {
+			if (typeof noty !== 'undefined') noty(response.warning);
+			else alert(response.warning);
+			return false;
+		}
+
+		if (typeof response.error !== 'undefined') {
+			if (typeof noty !== 'undefined') noty(response.error);
+			else alert(response.error);
+			return false;
+		}
+
+		var form = this.getForm();
+
+		if (typeof response.success !== 'undefined') {
+			if ((form && form.attr('data-success') != 'false') || !form) {
+				if (typeof noty !== 'undefined') noty(response.success);
+				else alert(response.success);
+			}
+
+			if (form) {
+				if (form.attr('data-reset') != 'false') {
+					form.trigger('reset');
+				}
+				if (form.parents('.modal').length > 0) {
+					form.parents('.modal').modal('hide');
+				}
+			}
+			return false;
+		}
+
+		console.log(response);
+	},
+
+	InputError: function (obj) {
+		var form = this.getForm(),
+			input = form.find('[name="' + obj.name + '"]'), elemAfter;
+
+		if (obj.name == 'g-recaptcha') {
+			input = form.find('.g-recaptcha');
+		}
+
+		if (input.length == 0) {
+			if (obj.name.indexOf('[') > -1) {
+				var name = obj.name.substr(0, obj.name.indexOf('[')),
+					index = obj.name.substr(obj.name.indexOf('[') + 1, obj.name.length).replace(']', '');
+				input = form.find('[name="' + name + '[]"]:eq(' + index + ')');
+			}
+		}
+
+		if (input.length == 0) {
+			console.log('Нет элемента ' + obj.name + ' в форме');
+			return false;
+		}
+
+		if (input.parents('.input-group').length > 0) {
+			elemAfter = input.parents('.input-group');
+		} else {
+			elemAfter = input.parent().find('[name]');
+		}
+
+		if (obj.name == 'g-recaptcha') {
+			elemAfter = form.find('.g-recaptcha');
+		}
+
+		$('[data-error-input="' + obj.name + '"]').remove();
+		elemAfter
+			.addClass('is-invalid')
+			.after('<small data-error-input="' + obj.name + '" class="form-text text-danger">' + obj.text + '</small>');
+
+		if (obj.isFocus) {
+			input.focus();
+			this.ScrollUp(input);
+		}
+
+		if (typeof obj.value !== 'undefined') {
+			input.val(obj.value).focus();
+			this.ScrollUp(input);
+		}
+	},
+
+	// Поднятие поля вверх
+	ScrollUp: function (elem) {
+		if ($('.modal.show').length > 0) return false;
+		var scrollTop = elem.offset().top - 25;
+		if ($('#header:eq(0)').length > 0) scrollTop = scrollTop - $('#header:eq(0)').innerHeight();
+		$('html, body').animate({
+			scrollTop: scrollTop
+		}, 300);
+	}
+
+}
+
+$(FormSender.init);

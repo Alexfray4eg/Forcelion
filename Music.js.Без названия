@@ -1,0 +1,222 @@
+'use strict';
+
+var videlit = [
+	'1|', '2|', '3|', '4|', '5|', '6|',
+	'1:', '2:', '3:', '4:', '5:', '6:', '7:', '8:', '9:', '0:',
+	'вступление:', 'интро:', 'куплет:', 'припев:', 'переход:', 'реп:', 'мост:', 'мостик:', 'вставка:', 'речитатив:', 'бридж:', 'инструментал:', 'проигрыш:', 'запев:', 'концовка:', 'окончание:', 'в конце:', 'кода:', 'тэг:', 'рэп:', 'стих:', 'слово:', 'декламация:',
+	'intro:', 'verse:', 'chorus:', 'bridge:', 'instrumental:', 'build:', 'ending:', 'link:', 'outro:', 'interlude:', 'rap:', 'spontaneous:', 'refrain:', 'tag:', 'coda:', 'vamp:', 'channel:', 'break:', 'breakdown:', 'hook:', 'turnaround:', 'turn:', 'solo:',
+	'вступ:', 'інтро:', 'приспів:', 'інструментал:', 'інтерлюдія:', 'брідж:', 'заспів:', 'міст:', 'програш:', 'соло:', 'перехід:', 'повтор:', 'кінець:', 'в кінці:', 'фінал:', 'кінцівка:', 'закінчення:', 'тег:', 'вірш:', 'частина:', 'декламація:',
+	'strophe:',
+	'прыпеў:', 'прысьпеў:', 'пройгрыш:', 'couplet:', 'pont:',
+	'strofă:', 'refren:', 'verso:', 'coro:', 'puente:', 'refrão:', 'parte:', 'strofa:', 'zwrotka:', 'espontáneo:', 'chords:'
+];
+
+var Music = {
+
+	initOneStatus: false,
+	initOne: function () {
+		if (!Music.initOneStatus) {
+			Music.initOneStatus = true;
+
+			$(window).scroll(function () {
+				Music.autoScrollTop();
+			});
+
+			$('html').on('ajaxLoad', function () {
+				if (Music.scrollInterval) {
+					clearInterval(Music.scrollInterval);
+				}
+			});
+		}
+	},
+
+	init: function () {
+		if ($('#music_text').length) {
+			$('#music_text').transpose({ key: $('#music_text').attr('class') });
+			Music.autoScroll();
+		}
+		Music.initOne();
+		Music.history_add();
+	},
+
+	view: function () {
+		$.post('/', {
+			class: 'music/Music',
+			method: 'setView',
+			music: music,
+			album: album,
+			artist: artist
+		});
+	},
+
+	history_add: function () {
+		$.post('/', {
+			class: 'History',
+			method: 'Add',
+			music_id: music.id
+		});
+	},
+
+	elemTop: false,
+	autoScrollTop: function () {
+		if (!Music.elemTop && $('.autoScroll').length) {
+			Music.elemTop = $('.autoScroll').offset().top;
+			$(window).trigger('scroll');
+		} else {
+			var elemHeight = parseFloat($('.autoScroll').css('height')),
+				headerHeight = parseFloat($('header').css('height')) + 25,
+				scrollTop = $(window).scrollTop() + headerHeight,
+				musicTextHeight = $('#music_text').length ? parseFloat($('#music_text').css('height')) + $('#music_text').offset().top : 0,
+				stop = (scrollTop < musicTextHeight ? musicTextHeight - scrollTop : true),
+				stop = stop < elemHeight ? true : false;
+
+			if (stop) {
+				if (!$('.autoScroll').attr('data-stop')) {
+					$('.autoScroll').attr('data-stop', 'true').animate({
+						'top': -(elemHeight) + 'px'
+					}, 100);
+				}
+			} else if (scrollTop > Music.elemTop) {
+				if ($('.autoScroll').attr('data-stop')) {
+					$('.autoScroll').animate({
+						'top': headerHeight + 'px'
+					}, 100, function () {
+						$(this).removeAttr('data-stop');
+					});
+				} else {
+					if ($('#music_text').length) {
+						$('.autoScroll').stop().css({
+							'position': 'fixed',
+							'top': headerHeight + 'px',
+							'left': (
+								parseFloat($('#music_text').css('width')) +
+								$('#music_text').offset().left -
+								parseFloat($('.autoScroll').css('width'))
+							) + 'px'
+						});
+					}
+				}
+			} else {
+				$('.autoScroll').css({
+					'position': 'absolute',
+					'top': '0',
+					'left': 'unset'
+				});
+			}
+		}
+	},
+
+	scrollInterval: false,
+	autoScroll: function () {
+		var autoScrollVal = function (val) {
+			if (typeof val !== 'undefined') {
+				$('.autoScroll input').val(val < 0 ? 0 : (val > 6 ? 6 : val)).trigger('input');
+			}
+			return parseFloat($('.autoScroll input').val());
+		}, stopScrollBy = function () {
+			var scrollBodyHeight = $(window).scrollTop() + $(window).height(),
+				textHeight = parseFloat($('#music_text').css('height')) + $('#music_text').offset().top;
+			return scrollBodyHeight > textHeight ? true : false;
+		}, autoScroll = function (val) {
+			var s = 0;
+
+			clearInterval(Music.scrollInterval);
+
+			if (val == 6) { s = 20; }
+			if (val == 5) { s = 30; }
+			if (val == 4) { s = 50; }
+			if (val == 3) { s = 100; }
+			if (val == 2) { s = 200; }
+			if (val == 1) { s = 500; }
+
+			if (s) {
+				Music.scrollInterval = setInterval(function () {
+					if (stopScrollBy()) {
+						clearInterval(Music.scrollInterval);
+						autoScrollVal(0);
+					} else {
+						window.scrollBy(0, 1);
+					}
+				}, s);
+			}
+		}, elemAppend = function () {
+			$('.autoScroll').remove();
+			$('#music_text').css('position', 'relative').append('<div class="autoScroll"><i class="fas fa-caret-up" data-up></i><input type="text" value="0"><i data-down class="fas fa-caret-down"></i><i class="fas fa-stop" data-stop></i><a href="#metronom" data-toggle="modal"><svg title="метроном" data-toggle="tooltip" data-placement="top" class="p-1 svg-inline--fa fa-metronome fa-w-16" aria-labelledby="svg-inline--fa-title-Urf5EmDD8iNY" data-prefix="fas" data-icon="metronome" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 426 512" data-fa-i2svg="" data-original-title="метроном"><path fill="currentColor" d="M174.114 0h77.772c22.611 0 42.544 14.831 49.041 36.488l122.88 409.6c9.855 32.85-14.743 65.912-49.041 65.912H249a4 4 0 01-4-4V317a4 4 0 014-4h12c17.673 0 32-14.327 32-32 0-17.673-14.327-32-32-32h-12a4 4 0 01-4-4v-34c0-17.673-14.327-32-32-32-17.673 0-32 14.327-32 32v34a4 4 0 01-4 4h-12c-17.673 0-32 14.327-32 32 0 17.673 14.327 32 32 32h12a4 4 0 014 4v191a4 4 0 01-4 4H51.234c-34.298 0-58.896-33.062-49.041-65.912l122.88-409.6C131.57 14.83 151.503 0 174.114 0z"></path></svg></a></div>');
+			setTimeout(function () {
+				$('.autoScroll input').on('input', function () {
+					var val = parseFloat($(this).val());
+					if (val > 6 || val < 0) {
+						autoScrollVal(val < 0 ? 0 : (val > 6 ? 6 : val));
+					} else {
+						autoScroll(autoScrollVal());
+					}
+				});
+				$('.autoScroll [data-up]').on('click', function () {
+					autoScrollVal(autoScrollVal() + 1);
+				});
+				$('.autoScroll [data-down]').on('click', function () {
+					autoScrollVal(autoScrollVal() - 1);
+				});
+				$('.autoScroll [data-stop]').on('click', function () {
+					autoScrollVal(0);
+				});
+			}, 1000);
+		};
+
+		elemAppend();
+
+		$('#keys, [data-toggle-keys]').on('mouseup', elemAppend);
+	},
+
+	like: function (type, id) {
+		$.post('/', {
+			class: 'music/Music',
+			method: 'like',
+			id: id,
+			type: type
+		}, function (json) {
+			if (json.success) {
+				$('#lik_1').html(type ? parseFloat($('#lik_1').html()) + 1 : parseFloat($('#lik_1').html()) - 1);
+				noty(json.success);
+			} else if (json.error) {
+				noty(json.error);
+			}
+		}, 'json');
+	},
+
+	transliterate: function (text, engToRus) {
+		var rus = "а е к о п р с у х А Е К О Р С Х".split(/ +/g),
+			eng = "a e k o n p c y x A E K O P C X".split(/ +/g);
+		for (var x = 0; x < rus.length; x++) {
+			text = text.split(engToRus ? eng[x] : rus[x]).join(engToRus ? rus[x] : eng[x]);
+			text = text.split(engToRus ? eng[x] : rus[x]).join(engToRus ? rus[x] : eng[x]);
+		}
+		return text;
+	},
+
+	copyText: function () {
+		var el = document.getElementsByTagName('body')[0];
+		var sel = window.getSelection();
+		var txt = sel + "";
+		txt = txt.replace(/\s/g, ' ');
+		var nd = document.createElement('div');
+		nd.style.position = 'absolute';
+		nd.style.left = '-99999px';
+		el.appendChild(nd);
+		nd.innerHTML = Music.transliterate(txt, true);
+		sel.selectAllChildren(nd);
+		window.setTimeout(function () {
+			el.removeChild(nd);
+		}, 0);
+	}
+
+}
+function copytext(el) {
+	var $tmp = $("<textarea>");
+	$("body").append($tmp);
+	$tmp.val($(el).text()).select();
+	document.execCommand("copy");
+	$tmp.remove();
+}
+
+$(Music.init);

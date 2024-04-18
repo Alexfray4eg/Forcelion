@@ -1,0 +1,88 @@
+'use strict';
+
+var Editor = {
+
+	ajax: false,
+
+	init: function () {
+		$('#musicEditModal').on('show.bs.modal', Editor.getMusic);
+		$('#musicEditModal [name="text2"]').on('contextmenu', false).attr({
+			'oncopy': 'return false;',
+			'oncut': 'return false;',
+			'ondragstart': 'return false;',
+		});
+	},
+
+	del: function (button) {
+		if (!confirm('Точно удалить?')) return false;
+
+		if (Editor.ajax) return false;
+		Editor.ajax = true;
+
+		$.post('/', {
+			class: 'API/Editor',
+			method: 'del',
+			editor_id: $(button).attr('data-editorid')
+		}, function (json) {
+			Editor.ajax = false;
+			if (typeof json.error !== 'undefined') {
+				alert(json.error);
+			} else {
+				window.location.reload();
+			}
+		}, 'json');
+	},
+
+	save: function (button) {
+		if (Editor.ajax) return false;
+		Editor.ajax = true;
+
+		var key = $(button).attr('data-key'),
+			id = $(button).attr('data-id'),
+			table = $(button).attr('data-table'),
+			val = $(button).parents('.form-group').find('textarea').val(),
+			ratingCount = $('[name="ratingCount[' + key + ']"]').val();
+
+		$.post('/', {
+			class: 'API/Editor',
+			method: 'save',
+			id: id,
+			table: table,
+			val: val,
+			key: key,
+			ratingCount: ratingCount
+		}, function (json) {
+			Editor.ajax = false;
+			if (typeof json.error !== 'undefined') {
+				alert(json.error);
+			} else {
+				alert(json.success);
+				$('[name="ratingCount[' + key + ']"] option:first').prop('selected', true);
+			}
+		}, 'json');
+	},
+
+	getMusic: function () {
+		if (Editor.ajax) return false;
+		Editor.ajax = true;
+
+		$.post('/', {
+			class: 'music/Music',
+			method: 'Get',
+			id: music.id,
+			select: ['name', 'text']
+		}, function (json) {
+			Editor.ajax = false;
+			if (typeof json.error !== 'undefined') {
+				alert(json.error);
+			} else {
+				$.each(json, function (name, val) {
+					$('#musicEditModal [name="' + name + '"]').val(text_encode(val));
+				});
+			}
+		}, 'json');
+	}
+
+};
+
+$(Editor.init);

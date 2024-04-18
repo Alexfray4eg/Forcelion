@@ -1,0 +1,35 @@
+var comment = {
+	
+	ajax: false,
+	
+	del: function(id){
+		if(!confirm('Уверены, что хотите удалить?')) return false;
+	
+		if(comment.ajax) return false;
+		comment.ajax = true;
+		
+		$.post('/', {
+			class: 'Comments',
+			method: 'del',
+			id: id
+		}, function(json){
+			comment.ajax = false;
+			if(json.success){
+				$('[data-order-item="'+ id +'"]').remove();
+			}
+		}, 'json');
+	},
+	
+	getNewComment: function(){
+		$.get(window.location.href, function(html){
+			$('[data-callback="comment.getNewComment"]').trigger('reset');
+			if(!$('#entries [data-order-item]').length){
+				$('#entries').html('');
+			}
+			$('#entries').prepend($('[data-order-item]:eq(0)', html).clone());
+			$('[data-order-item]:eq(0)').hide().slideDown();
+			chat_all.pageLoad();
+		});
+	}
+	
+}

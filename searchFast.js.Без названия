@@ -1,0 +1,105 @@
+'use strict';
+
+var searchFast = {
+
+	init: function () {
+		$('#header [name="name"]').popover();
+		$(document).on('ajaxLoad', 'html', function () {
+			$('#header [name="name"]').popover();
+		});
+		$(document).on('input', '#header [name="name"]', searchFast.search);
+		$(document).on('click', '*', function (e) {
+			let isFocusSearchInput = false;
+
+			const form = $(this).parents('form');
+
+			if (form.length) {
+				const action = form.attr('action');
+
+				if (action) {
+					if (action.indexOf('/search') > -1) {
+						isFocusSearchInput = true;
+					}
+				}
+			}
+
+			if ($(this).parents('.popover').length == 0 && isFocusSearchInput == false && $.fn.popover) {
+				$('#header [name="name"]').val('').popover('hide');
+			}
+
+			if ($(this).parents('.popover').length || isFocusSearchInput == true) {
+				e.stopPropagation();
+			}
+		});
+	},
+
+	searchTimer: false,
+	search: function (input) {
+		var query = $.trim($(input.target).val());
+		if (query == '') return false;
+
+		$('#header [name="name"]').attr('data-content', '<div class="text-center"><i class="text-dark fas fa-circle-notch fa-spin"></i></div>').popover('show');
+
+		if (searchFast.searchTimer) {
+			clearTimeout(searchFast.searchTimer);
+		}
+		searchFast.searchTimer = setTimeout(function () {
+			$.ajax({
+				url: '/search',
+				type: 'get',
+				dataType: 'json',
+				data: {
+					name: query
+				},
+				complete: function (json) {
+					var json = JSON.parse(json.responseText), html = '';
+					if (json && json.musics && json.musics.data) {
+						$.each(json.musics.data, function (i, item) {
+							if (i > 5) return false;
+
+							if (i == 0) html += '<b>Песни:</b>';
+
+							let img_src = '';
+
+							if (item.album && item.album.img_url) {
+								img_src = item.album.img_url;
+							} else if (item.artist && item.artist.img_url) {
+								img_src = item.artist.img_url;
+							}
+
+							html += '\
+								<div class="media mt-2">\
+									<a href="/'+ item.id + '"><img src="' + (img_src ? '/thumb.php?src=' + img_src + '&t=m&w=40&h=40' : '/assets/img/no-cover.jpeg') + '" width="40" class="mr-2 rounded"></a>\
+									<div class="media-body">\
+										<a href="/'+ item.id + '">' + item.name + '</a>\
+										'+ (item.artist ? '<div class="text-muted">' + item.artist.isp_name + '</div>' : '') + '\
+									</div>\
+								</div>\
+							';
+						});
+					}
+
+					if (json.artists) {
+						$.each(json.artists, function (i, item) {
+							if (i == 0) html += '<hr class="my-2"><b>Исполнители:</b>';
+
+							html += '\
+								<div class="media mt-2">\
+									<a href="/artist/'+ item.id + '"><img src="' + (item.img_url ? '/thumb.php?src=' + item.img_url + '&t=m&w=40&h=40' : '/assets/img/isp_default.png') + '" width="40" class="mr-2 rounded"></a>\
+									<div class="media-body">\
+										<a href="/artist/'+ item.id + '">' + item.isp_name + '</a>\
+									</div>\
+								</div>\
+							';
+						});
+					}
+					if (html == '') html = '<div class="text-center">Ничего не найдено</div>';
+					$('#header [name="name"]').attr('data-content', html).popover('show');
+				}
+			});
+		}, 500);
+	}
+
+};
+
+$(searchFast.init);

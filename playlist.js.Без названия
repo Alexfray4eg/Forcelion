@@ -1,0 +1,239 @@
+'use strict';
+
+var playlist = {
+
+	// Первый запуск
+	init: function () {
+		$('[data-target="#playlist"]').on('click', function () {
+			playlist.OpenModal($(this));
+		});
+		$('#playlist [name="name"]').on('keyup', function () {
+			playlist.Keyup($(this));
+		});
+		if (playlist.user_id && _USER.id && playlist.user_id == _USER.id) {
+			$('[data-plugin="sortable"]').sortable({
+				cursor: "move",
+				stop: function (e, ui) {
+					var id_move = ui.item.attr('data-entry-id'),
+						id_before = ui.item.next().attr('data-entry-id');
+
+					playlist.setPosition(id_move, id_before);
+				}
+			});
+		}
+		$('[data-setposition="down"]').on('click', function () {
+			var parent = $(this).parents('[data-entry-id]');
+
+			if (parent.next().length == 0) return false;
+			parent.next().after(parent.detach());
+
+			var id_move = parent.attr('data-entry-id'),
+				id_before = $('[data-entry-id="' + parent.attr('data-entry-id') + '"]').next().attr('data-entry-id');
+			playlist.setPosition(id_move, id_before);
+		});
+		$('[data-setposition="up"]').on('click', function () {
+			var parent = $(this).parents('[data-entry-id]');
+
+			if (parent.prev().length == 0) return false;
+			parent.prev().before(parent.detach());
+
+			var id_move = parent.attr('data-entry-id'),
+				id_before = $('[data-entry-id="' + parent.attr('data-entry-id') + '"]').next().attr('data-entry-id');
+			playlist.setPosition(id_move, id_before);
+		});
+		if ((playlist.user_id && _USER.id && (playlist.user_id != _USER.id)) || !playlist.user_id || !_USER.id) {
+			$('[data-setposition="down"], [data-setposition="up"]').hide();
+		}
+	},
+
+	// Сохранение позиции
+	setPosition: function (id_move, id_before) {
+		$.post('/', {
+			class: 'music/Playlist',
+			method: 'setPosition',
+			id_move: id_move,
+			playlist_id: playlist.id,
+			id_before: id_before
+		});
+	},
+
+	// Печатает название
+	name: false,
+	Keyup: function (input) {
+		playlist.name = $.trim(input.val());
+		playlist.Load($.trim(input.val()), 1);
+	},
+
+	// Открытие окна
+	music_id: false,
+	OpenModal: function (button) {
+		playlist.music_id = button.attr('data-id');
+		playlist.Load('', 1);
+	},
+
+	// Загрузка плейлистов
+	Timer: false,
+	Load: function (name, page) {
+		// Прелоадер
+		$('#playlist .List').hide();
+		$('#playlist .Preloader').show();
+
+		// Получаем список
+		if (playlist.Timer) clearTimeout(playlist.Timer);
+		playlist.Timer = setTimeout(function () {
+			$.post('/', {
+				class: 'music/Playlist',
+				method: 'Get',
+				page: page,
+				name: name
+			}, playlist.print, 'json');
+		}, 1000);
+	},
+
+	// Добавить в плейлист
+	AddAjax: false,
+	AddMusic: function (button) {
+		if (playlist.AddAjax) return false;
+		playlist.AddAjax = true;
+
+		playlist.btnNewClass($(button), 'fa-spin');
+
+		$.post('/', {
+			class: 'music/Playlist',
+			method: 'AddMusic',
+			playlist_id: $(button).attr('data-id'),
+			music_id: playlist.music_id
+		}, function (json) {
+			playlist.AddAjax = false;
+			if (typeof json.error !== 'undefined') {
+				playlist.btnNewClass($(button), 'fa-plus');
+				return alert(json.error);
+			}
+			playlist.btnNewClass($(button), 'fa-check');
+			$(button).removeAttr('onclick');
+		}, 'json');
+	},
+
+	// Создать плейлист
+	AddAjax: false,
+	Add: function (button) {
+		if (playlist.AddAjax) return false;
+		playlist.AddAjax = true;
+
+		playlist.btnNewClass($(button), 'fa-spin');
+
+		$.post('/', {
+			class: 'music/Playlist',
+			method: 'Add',
+			name: playlist.name,
+			music_id: playlist.music_id
+		}, function (json) {
+			playlist.AddAjax = false;
+			if (typeof json.error !== 'undefined') {
+				playlist.btnNewClass($(button), 'fa-plus');
+				return alert(json.error);
+			}
+			$(button).removeAttr('onclick');
+			playlist.btnNewClass($(button), 'fa-check');
+		}, 'json');
+	},
+
+	// Установка нового класс на кнопку
+	btnNewClass: function (btn, addclass) {
+		btn.find('svg').addClass('d-none');
+		btn.find('.' + addclass).removeClass('d-none');
+	},
+
+	// Отображение html
+	print: function (json) {
+		var tpl = $('#playlist .ListTpl').html();
+
+		// Для создания плейлиста
+		if (playlist.name !== false) {
+			json.num_entries = parseFloat(json.num_entries) + 1;
+			if (typeof json.entries === 'undefined') json['entries'] = [];
+			var tplNew = tpl.replace('{count}', 0);
+			tplNew = tplNew.replace('{name}', playlist.name);
+			tplNew = tplNew.replace('{datetime}', 'сейчас');
+			tplNew = tplNew.replace('{href}', 'javascript://');
+			tplNew = tplNew.replace('.AddMusic(this)', '.Add(this)');
+			json.entries.push(tplNew);
+		}
+
+		// Вывод
+		if (json.num_entries > 0) {
+			$('#playlist .List').html('');
+
+			$.each(json.entries, function (i, item) {
+				if (typeof item === 'object') {
+					var tplNew = tpl;
+					tplNew = tplNew.replace('{count}', item.count);
+					tplNew = tplNew.replace('{name}', item.name);
+					tplNew = tplNew.replace('{datetime}', item.datetime);
+					tplNew = tplNew.replace('{id}', item.id);
+					tplNew = tplNew.replace('{href}', item.href);
+					item = tplNew;
+				}
+				$('#playlist .List').append(item);
+			});
+		} else {
+			$('#playlist .List').html('<div class="text-center">Нет ни одного плейлиста, напишите название в поле, чтобы создать новый</div>');
+		}
+
+		// Прелоадер
+		$('#playlist .List, #playlist .List li').show();
+		$('#playlist .Preloader').hide();
+	},
+
+	// Удалить плейлист
+	delAjax: false,
+	del: function (id) {
+		if (!confirm('Удалить плейлист?')) return false;
+
+		if (playlist.delAjax) return false;
+		playlist.delAjax = true;
+
+		$.post('/', {
+			class: 'music/Playlist',
+			method: 'Del',
+			playlist_id: id
+		}, function (json) {
+			playlist.delAjax = false;
+			if (typeof json.success === 'undefined') {
+				console.log(json);
+			} else {
+				$('#playlist' + id + '').slideDown('fast', function () {
+					$(this).remove();
+				});
+			}
+		}, 'json');
+	},
+
+	// Удалить из плейлиста
+	delMusicAjax: false,
+	delMusic: function (id, playlist_id) {
+		if (!confirm('Удалить песню из плейлиста?')) return false;
+
+		if (playlist.delMusicAjax) return false;
+		playlist.delMusicAjax = true;
+
+		$.post('/', {
+			class: 'music/Playlist',
+			method: 'Del',
+			playlist_id: playlist_id,
+			music_id: id
+		}, function (json) {
+			playlist.delMusicAjax = false;
+			if (typeof json.success === 'undefined') {
+				console.log(json);
+			} else {
+				$('#audio' + id + '').slideDown('fast', function () {
+					$(this).remove();
+				});
+			}
+		}, 'json');
+	}
+
+};
+
+$(playlist.init);
